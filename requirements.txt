@@ -2,6 +2,5 @@ streamlit
 plotly
 numpy
 pandas
-sklearn 
+scikit-learn
 yfinance
-datetime
