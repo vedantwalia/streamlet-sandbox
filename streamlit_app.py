@@ -9,7 +9,7 @@ from pandas.tseries.offsets import BDay
 
 # Sidebar controls for user input
 instrument = st.sidebar.text_input("Instrument (Ticker)", value="AAPL")
-start_date = st.sidebar.date_input("Start Date", value=date(2023, 1, 1))
+start_date = st.sidebar.date_input("Start Date", value=date(2025, 1, 1))
 end_date = st.sidebar.date_input("End Date", value=datetime.now())
 show_ma = st.sidebar.checkbox("Show Moving Average", value=True)
 ma_window = st.sidebar.slider("SMA Window", 3, 30, 10)
