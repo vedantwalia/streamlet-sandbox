@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 import yfinance as yf
-import io
 from datetime import datetime, date
 
 # Sidebar controls
@@ -23,16 +22,33 @@ def fetch_historical_data_yf(ticker, start, end):
     df = yf.download(ticker, start=start, end=end)
     if df.empty:
         return None
-    df = df.reset_index()
-    df.rename(columns={
-        'Date': 'date',
-        'Open': 'open',
-        'High': 'high',
-        'Low': 'low',
-        'Close': 'close',
-        'Volume': 'volume'
-    }, inplace=True)
+
+    # Flatten MultiIndex columns if present (e.g., ('Close', 'AAPL'))
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [col[0].lower() for col in df.columns]  # keep first level, lowercase
+    else:
+        df.columns = [col.lower() for col in df.columns]
+
+    df = df.reset_index()  # Move Date from index to column
+
+    # Rename 'Date' column from reset_index to 'date', if present
+    if 'Date' in df.columns:
+        df.rename(columns={'Date': 'date'}, inplace=True)
+    elif 'date' not in df.columns:
+        # If no 'Date' column and 'date' missing, rename first column to 'date'
+        df.rename(columns={df.columns[0]: 'date'}, inplace=True)
+
+    # Ensure numeric columns
+    for col in ['open', 'high', 'low', 'close', 'volume']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # Drop rows missing essential data
+    df = df.dropna(subset=['open', 'high', 'low', 'close'])
+
+    df = df.sort_values('date')
     return df
+
 
 df = fetch_historical_data_yf(instrument, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
 
@@ -40,9 +56,8 @@ if df is not None and not df.empty:
     df['date'] = pd.to_datetime(df['date'])
     df.sort_values('date', inplace=True)
 
-    # Convert columns to numeric safely (handle missing or malformed columns)
     for col in ['open', 'high', 'low', 'close', 'volume']:
-        if col in df.columns and pd.api.types.is_list_like(df[col]):
+        if col in df.columns:
             try:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             except Exception as e:
@@ -63,7 +78,6 @@ if df is not None and not df.empty:
         )
     ]
 
-    # Moving Average
     if show_ma:
         df['ma'] = df['close'].rolling(window=ma_window).mean()
         plotly_data.append(go.Scatter(
@@ -71,13 +85,11 @@ if df is not None and not df.empty:
             name=f"SMA{ma_window}", line=dict(color='blue', width=1)
         ))
 
-    # Volume Bars (secondary y-axis)
     if show_volume and 'volume' in df.columns:
         plotly_data.append(go.Bar(
             x=dates, y=df['volume'], name='Volume', marker_color='orange', opacity=0.3, yaxis='y2'
         ))
 
-    # Peak/Trough detection (local maxima/minima)
     if show_pattern:
         close_np = df['close'].values
         peaks, troughs = [], []
@@ -97,13 +109,12 @@ if df is not None and not df.empty:
                 mode='markers', name='Troughs', marker=dict(symbol='triangle-down', color='green', size=10)
             ))
 
-    # ML Linear Regression forecast
     if show_ml and len(df) > 30:
         X = np.arange(len(df)).reshape(-1, 1)
         y = df['close'].values
         model = LinearRegression().fit(X, y)
         fut_X = np.arange(len(df), len(df) + forecast_days).reshape(-1, 1)
-        fut_dates = pd.date_range(df['date'].iloc[-1]+pd.Timedelta('1B'), periods=forecast_days, freq='B')
+        fut_dates = pd.date_range(df['date'].iloc[-1] + pd.Timedelta('1B'), periods=forecast_days, freq='B')
         future_preds = model.predict(fut_X)
         plotly_data.append(go.Scatter(
             x=fut_dates, y=future_preds, mode='lines',
@@ -125,16 +136,7 @@ if df is not None and not df.empty:
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
-    try:
-        buf = io.BytesIO()
-        fig.write_image(buf, 'png')
-        st.download_button(
-            "Download Chart as PNG", buf.getvalue(), file_name=f"{instrument}_candlestick.png", mime="image/png"
-        )
-    except Exception:
-        st.warning("Image export requires 'kaleido' package. Install it with `pip install kaleido`.")
-
+    
     st.markdown('---')
     st.dataframe(df.tail(20))
 
