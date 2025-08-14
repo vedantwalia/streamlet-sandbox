@@ -7,7 +7,7 @@ import yfinance as yf
 from datetime import datetime, date
 from pandas.tseries.offsets import BDay
 
-# Sidebar controls
+# Sidebar controls for user input
 instrument = st.sidebar.text_input("Instrument (Ticker)", value="AAPL")
 start_date = st.sidebar.date_input("Start Date", value=date(2023, 1, 1))
 end_date = st.sidebar.date_input("End Date", value=datetime.now())
@@ -20,6 +20,7 @@ forecast_days = st.sidebar.slider("Forecast Days", 5, 30, 10)
 
 @st.cache_data
 def fetch_historical_data_yf(ticker, start, end):
+    # Download historical data from Yahoo Finance
     df = yf.download(ticker, start=start, end=end)
     if df.empty:
         return None
@@ -50,13 +51,15 @@ def fetch_historical_data_yf(ticker, start, end):
     df = df.sort_values('date')
     return df
 
-
+# Fetch historical data for the selected instrument and date range
 df = fetch_historical_data_yf(instrument, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
 
 if df is not None and not df.empty:
+    # Ensure date column is datetime and sort
     df['date'] = pd.to_datetime(df['date'])
     df.sort_values('date', inplace=True)
 
+    # Convert price and volume columns to numeric
     for col in ['open', 'high', 'low', 'close', 'volume']:
         if col in df.columns:
             try:
@@ -64,14 +67,17 @@ if df is not None and not df.empty:
             except Exception as e:
                 st.warning(f"Could not convert column '{col}' to numeric: {e}")
 
+    # Drop rows with missing essential data
     df = df.dropna(subset=['open', 'high', 'low', 'close'])
 
+    # Prepare data for plotting
     dates = df['date']
     open_prices = df['open']
     high_prices = df['high']
     low_prices = df['low']
     close_prices = df['close']
 
+    # Create candlestick chart data
     plotly_data = [
         go.Candlestick(
             x=dates, open=open_prices, high=high_prices,
@@ -79,6 +85,7 @@ if df is not None and not df.empty:
         )
     ]
 
+    # Add moving average line if selected
     if show_ma:
         df['ma'] = df['close'].rolling(window=ma_window).mean()
         plotly_data.append(go.Scatter(
@@ -86,11 +93,13 @@ if df is not None and not df.empty:
             name=f"SMA{ma_window}", line=dict(color='blue', width=1)
         ))
 
+    # Add volume bars if selected
     if show_volume and 'volume' in df.columns:
         plotly_data.append(go.Bar(
             x=dates, y=df['volume'], name='Volume', marker_color='orange', opacity=0.3, yaxis='y2'
         ))
 
+    # Detect and plot peaks and troughs if selected
     if show_pattern:
         close_np = df['close'].values
         peaks, troughs = [], []
@@ -110,6 +119,7 @@ if df is not None and not df.empty:
                 mode='markers', name='Troughs', marker=dict(symbol='triangle-down', color='green', size=10)
             ))
 
+    # Add ML-based linear regression forecast if selected
     if show_ml and len(df) > 30:
         X = np.arange(len(df)).reshape(-1, 1)
         y = df['close'].values
@@ -124,6 +134,7 @@ if df is not None and not df.empty:
             name="ML Forecast", line=dict(color='magenta', dash='dash')
         ))
 
+    # Create and display the Plotly figure
     fig = go.Figure(
         data=plotly_data,
         layout=go.Layout(
@@ -141,7 +152,9 @@ if df is not None and not df.empty:
     st.plotly_chart(fig, use_container_width=True)
     
     st.markdown('---')
+    # Show last 20 rows of the dataframe
     st.dataframe(df.tail(20))
 
 else:
+    # Show error if data could not be fetched
     st.error("Failed to fetch historical data for this ticker and date range.")
