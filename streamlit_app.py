@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 import yfinance as yf
 from datetime import datetime, date
+from pandas.tseries.offsets import BDay
 
 # Sidebar controls
 instrument = st.sidebar.text_input("Instrument (Ticker)", value="AAPL")
@@ -114,7 +115,9 @@ if df is not None and not df.empty:
         y = df['close'].values
         model = LinearRegression().fit(X, y)
         fut_X = np.arange(len(df), len(df) + forecast_days).reshape(-1, 1)
-        fut_dates = pd.date_range(df['date'].iloc[-1] + pd.Timedelta('1B'), periods=forecast_days, freq='B')
+        last_date = df['date'].iloc[-1]
+        start_forecast_date = last_date + BDay(1)
+        fut_dates = pd.date_range(start=start_forecast_date, periods=forecast_days, freq='B')
         future_preds = model.predict(fut_X)
         plotly_data.append(go.Scatter(
             x=fut_dates, y=future_preds, mode='lines',
